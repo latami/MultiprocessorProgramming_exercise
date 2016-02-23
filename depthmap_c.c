@@ -84,7 +84,7 @@ float *blend_2x2(float *img, unsigned int w, unsigned int h) {
  * Assumes cacheData memory is already correctly allocated. */
 void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
 						   unsigned int width, unsigned int bx, unsigned int by) {
-	float rcp_div_bxby, *blkMean, subtracted, squared_deviations;
+	float rcp_div_bxby, mean, *blkMean;
 	unsigned int lineTop, lineBot;
 	int x, y, i, bxSide;
 
@@ -111,20 +111,22 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
 	/* Calculate mean-values for blocks. Overwritten by deviations at the end
 	 * of the function. */
 	for (x = bxSide; x < width - bxSide; x++) {
-		blkMean[x] = 0.0f;
+		mean = 0.0f;
 		for (i = 0; i < bx; i++) {
-			blkMean[x] += cacheData[x + i - bxSide];
+			mean += cacheData[x + i - bxSide];
 		}
-		blkMean[x] *= rcp_div_bxby;
+		blkMean[x] = mean * rcp_div_bxby;
 	}
 
 	/* Cached elements are stored in serialized form, meaning that 1st 9x9-block
 	 * occupies indices 0-80, 2nd indices 81-161 in 1D-array and so on. */
+	float subtracted, squared_deviations;
 	for (i=bxSide; i < width - bxSide; i++) {
 		squared_deviations = 0.0f;
+		mean = blkMean[i]; /* Avoids memory read in innermost loop */
 		for (y=lineTop; y < lineBot; y++) {
 			for (x=0; x < bx; x++) {
-				subtracted = img[y*width+x+i-bxSide] - blkMean[i];
+				subtracted = img[y*width+x+i-bxSide] - mean;
 				cacheData[(i-bxSide)*bx*by + (y-lineTop)*bx + x] = subtracted;
 				squared_deviations += subtracted*subtracted;
 			}
