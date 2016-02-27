@@ -2,10 +2,19 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "lodepng.h"
 #include "depthmap_c.h"
 #include "doubleTime.h"
+
+struct threadData {
+	unsigned int error;
+	unsigned char *image;
+	unsigned int w;
+	unsigned int h;
+	char *name;
+};
 
 /* integer conversion with error checking */
 int parse_int( const char *str, int *d_error ) {
@@ -23,17 +32,27 @@ int parse_int( const char *str, int *d_error ) {
 	return i;
 }
 
+void *imageLoader(void *data) {
+	struct threadData *thData;
+
+	thData = (struct threadData *)data;
+	thData->error = lodepng_decode32_file(&thData->image, &thData->w, &thData->h, thData->name);
+	if (thData->error) {
+		fprintf(stderr, "error %u: %s\n", thData->error, lodepng_error_text(thData->error));
+	}
+	return NULL;
+}
+
 int main(int argc, char *argv[])
 {
 	int error;
-	unsigned char *image0, *image1;
-	unsigned int width0, width1, height0, height1;
 	double time1, time2, timeTotal1, timeTotal2;
 	char c;
-	int blockx, blocky, disp_limit;
+	int blockx, blocky, disp_limit, threads;
 	searchMethod select;
 
 	/* defaults */
+	threads = 0;
 	blockx = 9;
 	blocky = 9;
 	disp_limit = 65;
@@ -41,7 +60,7 @@ int main(int argc, char *argv[])
 
 	/* Parse command line */
 	while (1) {
-		c = getopt(argc, argv, "x:y:d:b");
+		c = getopt(argc, argv, "x:y:d:bt:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -69,12 +88,20 @@ int main(int argc, char *argv[])
 		case 'b':
 			select = BRUTE;
 			break;
+		case 't':
+			threads = parse_int(optarg, &error);
+			if (error == EXIT_FAILURE) {
+				fprintf(stderr, "Error parsing number of threads!\n");
+				return EXIT_FAILURE;
+			}
+			break;
 		default:
 			printf("Options:\n"
-				   "-x <>   sets blocksize in x-direction\n"
-				   "-y <>   sets blocksize in y-direction\n"
-				   "-d <>   sets maximum distance to search matches\n"
-				   "-b      toggle bruteforcing depthmaps\n");
+				   "-x <>   set blocksize in x-direction\n"
+				   "-y <>   set blocksize in y-direction\n"
+				   "-d <>   set maximum distance to search matches\n"
+				   "-b      toggle bruteforcing depthmaps\n"
+				   "-t <>   set number of threads\n");
 			return EXIT_FAILURE;
 			break;
 		}
@@ -85,30 +112,39 @@ int main(int argc, char *argv[])
 	time1 = doubleTime();
 
 	/* Load images */
-	error = lodepng_decode32_file(&image0, &width0, &height0, "im0.png");
-	if (error) {
-		fprintf(stderr, "error %u: %s\n", error, lodepng_error_text(error));
+	struct threadData thread0, thread1;
+	pthread_t helperThread;
+
+	thread0.name = "im0.png";
+	thread1.name = "im1.png";
+	/* Launch thread to decode another image */
+	pthread_create(&helperThread, NULL, imageLoader, (void *)&thread1);
+	/* Decode image also in mainthread. */
+	imageLoader((void *)&thread0);
+
+	/* Wait thread to finish before proceeding. */
+	pthread_join(helperThread, NULL);
+	if (thread0.error || thread1.error)
 		return EXIT_FAILURE;
-	}
-	error = lodepng_decode32_file(&image1, &width1, &height1, "im1.png");
-	if (error) {
-		fprintf(stderr, "error %u: %s\n", error, lodepng_error_text(error));
-		return EXIT_FAILURE;
-	}
-	if ((width0 != width1) || (height0 != height1)) {
+
+	if ((thread0.w != thread1.w) || (thread0.h != thread1.h)) {
 		fprintf(stderr, "Image dimensions did not match!\n");
-		free(image0);
-		free(image1);
+		free(thread0.image);
+		free(thread1.image);
 		return EXIT_FAILURE;
 	}
 	time2 = doubleTime();
 	printf("Image decoding time: %.3lf seconds.\n", time2-time1);
 
 	unsigned char *finalDepthmap;
-	finalDepthmap = generateDepthmap(image0, image1, width0, height0, blockx, blocky, disp_limit, select);
+	finalDepthmap = generateDepthmap(thread0.image, thread1.image, thread0.w, thread0.h, blockx, blocky, disp_limit, select, threads);
 	//int error;
+	if (finalDepthmap == NULL) {
+		fprintf(stderr, "GenerateDepthmap failed!\n");
+		return EXIT_FAILURE;
+	}
 	error = lodepng_encode_file("depth01p.png", finalDepthmap,
-								width0/4, height0/4, LCT_GREY, 8);
+								thread0.w/4, thread0.h/4, LCT_GREY, 8);
 	if (error) {
 		fprintf(stderr, "error %u: %s\n", error, lodepng_error_text(error));
 	}

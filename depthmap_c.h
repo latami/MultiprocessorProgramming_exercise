@@ -12,6 +12,6 @@ typedef enum {BRUTE, HIERARCHIC} searchMethod;
 unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
 								unsigned int width, unsigned height,
 								unsigned int blockx, unsigned int blocky,
-								unsigned int disp_limit, searchMethod select);
+								unsigned int disp_limit, searchMethod select, int threads);
 
 #endif
