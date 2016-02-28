@@ -222,10 +222,10 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
                 squared_deviations += subtracted*subtracted;
             }
         }
-        /* Deviation is stored starting blockW*blockH*(windowW-blockW-1)
-         * for x=0. Actual stddev's are starting from x=blockW/2 because we
+        /* Reciprocal of deviation is stored starting blockW*blockH*(windowW-blockW-1)
+         * for x=0. Actual rcp_dev's are starting from x=blockW/2 because we
          * calculate data only for full blocks. */
-        blkMean[i] = sqrtf(squared_deviations);
+        blkMean[i] = 1.0f / sqrtf(squared_deviations);
     }
 }
 
@@ -326,7 +326,7 @@ void *znccWorker(void *data) {
                         summed[0] += temp1*temp2;
                     }
 
-                    val = summed[0] / (deviations_left * deviations_right);
+                    val = summed[0] * (deviations_left * deviations_right);
 
                     /* Comparison for a first depthmap. */
                     if (val > maxVal) {
