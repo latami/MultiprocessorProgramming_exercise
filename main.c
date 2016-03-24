@@ -48,11 +48,12 @@ int main(int argc, char *argv[])
     int error;
     double time1, time2, timeTotal1, timeTotal2;
     char c;
-    int blockx, blocky, disp_limit, threads;
+    int blockx, blocky, disp_limit, threads, disableAsm;
     searchMethod select;
 
     /* defaults */
     threads = 0;
+    disableAsm = 0;
     blockx = 9;
     blocky = 9;
     disp_limit = 65;
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 
     /* Parse command line */
     while (1) {
-        c = getopt(argc, argv, "x:y:d:bt:");
+        c = getopt(argc, argv, "x:y:d:bt:s");
         if (c == -1)
             break;
         switch (c) {
@@ -95,13 +96,17 @@ int main(int argc, char *argv[])
                 return EXIT_FAILURE;
             }
             break;
+        case 's':
+            disableAsm = 1;
+            break;
         default:
             printf("Options:\n"
                    "-x <>   set blocksize in x-direction\n"
                    "-y <>   set blocksize in y-direction\n"
                    "-d <>   set maximum distance to search matches\n"
                    "-b      toggle bruteforcing depthmaps\n"
-                   "-t <>   set number of threads\n");
+                   "-t <>   set number of threads\n"
+                   "-s      toggle to disable assembly-code\n");
             return EXIT_FAILURE;
             break;
         }
@@ -137,7 +142,7 @@ int main(int argc, char *argv[])
     printf("Image decoding time: %.3lf seconds.\n", time2-time1);
 
     unsigned char *finalDepthmap;
-    finalDepthmap = generateDepthmap(thread0.image, thread1.image, thread0.w, thread0.h, blockx, blocky, disp_limit, select, threads);
+    finalDepthmap = generateDepthmap(thread0.image, thread1.image, thread0.w, thread0.h, blockx, blocky, disp_limit, select, threads, disableAsm);
     //int error;
     if (finalDepthmap == NULL) {
         fprintf(stderr, "GenerateDepthmap failed!\n");

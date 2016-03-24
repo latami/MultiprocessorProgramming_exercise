@@ -1,19 +1,45 @@
 project(MultiProcessorProgramming_exercise)
 cmake_minimum_required(VERSION 2.8)
 aux_source_directory(. SRC_LIST)
-find_package (Threads)
 
-set(SRC_LIST
-    ../main.c
-    ../lodepng.c
-    ../depthmap_c.c)
-set(HDR_LIST
-    ../lodepng.h
-    ../depthmap_c.h
-    ../doubleTime.h)
+if(UNIX)
+    find_package (Threads)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+    # Compare build type against empty string to enforce default behavior
+    # to be release-build.
+    string(COMPARE EQUAL "${CMAKE_BUILD_TYPE}" "" emptyString)
+    if(emptyString)
+        MESSAGE(STATUS "Build type not set, setting it to \"Release\".")
+        set(CMAKE_BUILD_TYPE Release)
+    endif(emptyString)
 
-add_executable(${PROJECT_NAME} ${SRC_LIST})
+    # Testing for "x86_64" would probably not work correctly on OSX
+    if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+        MESSAGE(STATUS "Enabling x86_64 assembly.")
+        enable_language(ASM_NASM)
+        # This forces yasm as a compiler. Configure will end successfully
+        # even with just nasm, but fails compiling because it requires yasm.
+        set(CMAKE_ASM_NASM_COMPILER "yasm")
+    else(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+        MESSAGE(STATUS "Not a X86_64-machine. Assembly-code will not be compiled!")
+    endif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
 
-target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT} m)
+    set(SRC_LIST
+        ../main.c
+        ../lodepng.c
+        ../depthmap_c.c
+        ../depthmap64.asm)
+    set(HDR_LIST
+        ../lodepng.h
+        ../depthmap_c.h
+        ../doubleTime.h)
+
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+
+    add_executable(${PROJECT_NAME} ${SRC_LIST})
+
+    target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT} m)
+
+else(UNIX)
+    MESSAGE(FATAL_ERROR "Program requires UNIX-like operating system!")
+endif(UNIX)

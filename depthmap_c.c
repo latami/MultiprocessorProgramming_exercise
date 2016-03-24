@@ -57,6 +57,22 @@ struct znccData {
     unsigned char *dmap2;
 };
 
+/* Defined function-pointers */
+float *(*blend_2x2Ptr)(float *img, unsigned int w, unsigned int h);
+void *(*blendWorkerPtr)(void *threadData);
+void *(*znccWorkerPtr)(void *data);
+
+#ifdef __x86_64__
+/* Assembly-functions */
+extern float *blend_2x2_sse3(float *img, unsigned int w, unsigned int h);
+
+extern void *blendWorker_sse2(void *threadData);
+
+extern void *znccWorker_sse3(void *threadData);
+
+extern int supportSSE3(void);
+#endif
+
 void *blendWorker(void *threadData) {
 
     int x, y, i, j, w, r, g, b, lasty;
@@ -136,10 +152,10 @@ float *blend4x4_cnvrtToGreyscale(struct blend4x4Data *data) {
 
     (*data->firstAvailable) = 0;
     for (i=0; i < data->threadsN-1; i++) {
-        pthread_create(&threads[i], NULL, &blendWorker, data);
+        pthread_create(&threads[i], NULL, blendWorkerPtr, data);
     }
     /* Main thread */
-    blendWorker(data);
+    blendWorkerPtr(data);
 
     for (i = 0; i < data->threadsN-1; i++) {
         pthread_join(threads[i], NULL);
@@ -154,7 +170,9 @@ float *blend_2x2(float *img, unsigned int w, unsigned int h) {
     int x, y, i, j;
     float pixel, *resized;
 
-    resized = malloc(sizeof(float)*(w/2)*(h/2));
+    /* Test return value to silence warning */
+    if (posix_memalign((void **)&resized, 16, sizeof(float)*(w/2)*(h/2)) != 0)
+        return NULL;
 
     for (y=0; y < h/2; y++) {
         for (x=0; x < w/2; x++) {
@@ -177,8 +195,9 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
                            unsigned int width, unsigned int bx, unsigned int by) {
     float rcp_div_bxby, mean, *blkMean;
     unsigned int lineTop, lineBot;
-    int x, y, i, bxSide;
+    int x, y, i, bxSide, blkStride;
 
+    blkStride = ((bx*by+7)/8)*8;
     rcp_div_bxby = 1.0f/(float)(bx*by);
     lineTop = scanline-by/2;
     lineBot = scanline+by/2+1;
@@ -197,20 +216,26 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
 
     /* Temp pointer for temporal mean's and deviation location on allocated
      * memory. */
-    blkMean = &cacheData[(width-(bx-1))*bx*by];
+    blkMean = &cacheData[width*blkStride];
 
     /* Calculate mean-values for blocks. Overwritten by deviations at the end
      * of the function. */
-    for (x = bxSide; x < width - bxSide; x++) {
-        mean = 0.0f;
-        for (i = 0; i < bx; i++) {
-            mean += cacheData[x + i - bxSide];
-        }
+    mean = 0.0f;
+    /* Loop for first mean */
+    for (i = 0; i < bx; i++) {
+        mean += cacheData[i];
+    }
+    blkMean[bxSide] = mean * rcp_div_bxby;
+
+    /* Rest of the means are calculated with 1 sub and 1 add, instead of bx adds */
+    for (x = bxSide+1; x < width - bxSide; x++) {
+        mean -= cacheData[x-bxSide-1];
+        mean += cacheData[x+bxSide];
         blkMean[x] = mean * rcp_div_bxby;
     }
 
     /* Cached elements are stored in serialized form, meaning that 1st 9x9-block
-     * occupies indices 0-80, 2nd indices 81-161 in 1D-array and so on. */
+     * occupies indices 0-80, 2nd indices 88-168 in 1D-array and so on. */
     float subtracted, squared_deviations;
     for (i=bxSide; i < width - bxSide; i++) {
         squared_deviations = 0.0f;
@@ -218,13 +243,13 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
         for (y=lineTop; y < lineBot; y++) {
             for (x=0; x < bx; x++) {
                 subtracted = img[y*width+x+i-bxSide] - mean;
-                cacheData[(i-bxSide)*bx*by + (y-lineTop)*bx + x] = subtracted;
+                cacheData[blkStride*i+(y-lineTop)*bx + x] = subtracted;
                 squared_deviations += subtracted*subtracted;
             }
         }
-        /* Reciprocal of deviation is stored starting blockW*blockH*(windowW-blockW-1)
-         * for x=0. Actual rcp_dev's are starting from x=blockW/2 because we
-         * calculate data only for full blocks. */
+        /* Reciprocal of deviation is stored starting
+         * ((blockW*blockH+7)/8)*8*(width) for i=0. Actual rcp_dev's
+         * are starting from i=blockW/2 because we calculate data only for full blocks. */
         blkMean[i] = 1.0f / sqrtf(squared_deviations);
     }
 }
@@ -232,8 +257,8 @@ void scanline_cacheBlkData(float *img, unsigned int scanline, float *cacheData,
 void *znccWorker(void *data) {
 
     struct znccData *thData;
-    int scanline, lastscanline, width, bx, by, blkSidex, blkSidey, i, x, xx;
-    int d, dlim, disp;
+    int scanline, lastscanline, width, bx, by, blkSidex, blkSidey, i, x;
+    int d, dlim, disp, blkStride;
     float deviations_left, deviations_right, maxVal, temp1, temp2, val;
 
     thData = (struct znccData *)data;
@@ -243,6 +268,7 @@ void *znccWorker(void *data) {
     by = thData->by;
     blkSidex = bx/2;
     blkSidey = by/2;
+    blkStride = ((bx*by+7)/8)*8;
 
     int sclines_increment = 10;
     while (1) {
@@ -278,9 +304,7 @@ void *znccWorker(void *data) {
             /* Go through one scanline */
             for (x = blkSidex; x < width - blkSidex; x++) {
 
-                xx = x - blkSidex;
-
-                deviations_left = thData->cache_blk_l[(width-(bx-1))*bx*by + x];
+                deviations_left = thData->cache_blk_l[width*blkStride + x];
 
                 maxVal = -FLT_MAX;
                 /* Set disparity-range for a loop. */
@@ -288,7 +312,7 @@ void *znccWorker(void *data) {
                 dlim = thData->displacements[scanline*width*2+x*2+1];
 
                 for (d=d; d <= dlim; d++) {
-                    deviations_right = thData->cache_blk_r[(width-(bx-1))*bx*by + x-d];
+                    deviations_right = thData->cache_blk_r[width*blkStride + x-d];
 
                     /* Left element multiplied with right element. */
                     /* Unrolled by 4. This makes function ~70% faster overall. */
@@ -302,17 +326,17 @@ void *znccWorker(void *data) {
                     summed[2]=0.0f;
                     summed[3]=0.0f;
                     /* Amount of elements is not divisible by 4, do not go over. */
-                    for (i = xx*bx*by; i < xx*bx*by+bx*by-3; i += 4) {
-                        temp1 = thData->cache_blk_r[i - d*bx*by];
+                    for (i = x*blkStride; i < x*blkStride+bx*by-3; i += 4) {
+                        temp1 = thData->cache_blk_r[i - d*blkStride];
                         temp2 = thData->cache_blk_l[i];
                         summed[0] += temp1*temp2;
-                        temp1 = thData->cache_blk_r[i+1 - d*bx*by];
+                        temp1 = thData->cache_blk_r[i+1 - d*blkStride];
                         temp2 = thData->cache_blk_l[i+1];
                         summed[1] += temp1*temp2;
-                        temp1 = thData->cache_blk_r[i+2 - d*bx*by];
+                        temp1 = thData->cache_blk_r[i+2 - d*blkStride];
                         temp2 = thData->cache_blk_l[i+2];
                         summed[2] += temp1*temp2;
-                        temp1 = thData->cache_blk_r[i+3 - d*bx*by];
+                        temp1 = thData->cache_blk_r[i+3 - d*blkStride];
                         temp2 = thData->cache_blk_l[i+3];
                         summed[3] += temp1*temp2;
                     }
@@ -320,8 +344,8 @@ void *znccWorker(void *data) {
                     summed[2] += summed[3];
                     summed[0] += summed[2];
                     /* Calculate trailing loops. */
-                    for (i = i; i < xx*bx*by+bx*by; i++) {
-                        temp1 = thData->cache_blk_r[i - d*bx*by];
+                    for (i = i; i < x*blkStride+bx*by; i++) {
+                        temp1 = thData->cache_blk_r[i - d*blkStride];
                         temp2 = thData->cache_blk_l[i];
                         summed[0] += temp1*temp2;
                     }
@@ -354,12 +378,18 @@ void *znccWorker(void *data) {
 void zncc2way(struct znccData *data) {
 
     unsigned int blkSidey;
+    int error, blkStride;
 
-    data->dmap1 = malloc(data->width*data->height*sizeof(unsigned char));
-    data->dmap2 = malloc(data->width*data->height*sizeof(unsigned char));
-
-    if (data->dmap1 == NULL || data->dmap2 == NULL)
+    if (posix_memalign((void **)&data->dmap1, 32, data->width*data->height
+                       *sizeof(unsigned char)) != 0) {
+        data->dmap1 = NULL;
         return;
+    }
+    if (posix_memalign((void **)&data->dmap2, 32, data->width*data->height
+                       *sizeof(unsigned char)) != 0) {
+        data->dmap2 = NULL;
+        return;
+    }
 
     /* Wipe memory */
     memset(data->dmap1, 0, sizeof(unsigned char)*data->width*data->height);
@@ -370,14 +400,18 @@ void zncc2way(struct znccData *data) {
 
     /* Allocate memory for all block values in one scanline + deviation
      * values at the end of allocated memory. */
-    data->cache_blk_l = malloc(sizeof(float)*((data->width-(data->bx-1))*data->bx*data->by+data->width));
-    data->cache_blk_r = malloc(sizeof(float)*((data->width-(data->bx-1))*data->bx*data->by+data->width));
+    blkStride = ((data->bx*data->by+7)/8)*8;  /* Align to 32 byte boundary */
+
+    error = posix_memalign((void **)&data->cache_blk_l, 32,
+                           sizeof(float)*(blkStride*data->width+data->width));
+    error += posix_memalign((void **)&data->cache_blk_r, 32,
+                            sizeof(float)*(blkStride*data->width+data->width));
 
     /* For comparing correlations for 2nd depthmap. */
-    data->cache_ccorrelations_dMap2 = malloc(sizeof(float)*data->width);
+    error += posix_memalign((void **)&data->cache_ccorrelations_dMap2, 32,
+                                                 sizeof(float)*data->width);
 
-    if (data->cache_blk_l == NULL || data->cache_blk_r == NULL
-            || data->cache_ccorrelations_dMap2 == NULL) {
+    if (error != 0) {
         free(data->cache_blk_l);
         free(data->cache_blk_r);
         free(data->cache_ccorrelations_dMap2);
@@ -398,12 +432,15 @@ void zncc2way(struct znccData *data) {
     for (i=0; i < data->threadsN-1; i++) {
         /* Copy struct and add thread-specific stuff. */
         thData[i] = (*data);
-        thData[i].cache_blk_l = malloc(sizeof(float)*((data->width-(data->bx-1))*data->bx*data->by+data->width));
-        thData[i].cache_blk_r = malloc(sizeof(float)*((data->width-(data->bx-1))*data->bx*data->by+data->width));
-        thData[i].cache_ccorrelations_dMap2 = malloc(sizeof(float)*data->width);
-        /* Check these allocations also for consistency. Actual failure untested. */
-        if (thData[i].cache_blk_l == NULL || thData[i].cache_blk_r == NULL
-                || thData[i].cache_ccorrelations_dMap2 == NULL) {
+
+        error = posix_memalign((void **)&thData[i].cache_blk_l, 32,
+                               sizeof(float)*(blkStride*data->width+data->width));
+        error += posix_memalign((void **)&thData[i].cache_blk_r, 32,
+                                sizeof(float)*(blkStride*data->width+data->width));
+        error += posix_memalign((void **)&thData[i].cache_ccorrelations_dMap2,
+                                32, sizeof(float)*data->width);
+        /* Check these allocations also for consistency. Untested. */
+        if (error != 0) {
             free(thData[i].cache_blk_l);
             free(thData[i].cache_blk_r);
             free(thData[i].cache_ccorrelations_dMap2);
@@ -424,10 +461,10 @@ void zncc2way(struct znccData *data) {
             return;
         }
 
-        pthread_create(&threads[i], NULL, znccWorker, &thData[i]);
+        pthread_create(&threads[i], NULL, znccWorkerPtr, &thData[i]);
     }
     /* Main thread */
-    znccWorker(data);
+    znccWorkerPtr(data);
 
     for (i = 0; i < data->threadsN-1; i++) {
         pthread_join(threads[i], NULL);
@@ -679,7 +716,8 @@ unsigned short *disparityLimits_2x2(struct disparityData *data) {
 unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
                                 unsigned int width, unsigned int height,
                                 unsigned int blockx, unsigned int blocky,
-                                unsigned int dispLimit, searchMethod select, int threads) {
+                                unsigned int dispLimit, searchMethod select,
+                                int threads, int disableAsm) {
 
     double time1, time2, total1, total2;
     struct znccData Data;
@@ -696,6 +734,26 @@ unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
         fprintf(stderr, "Maximum threads allowed is %d.\n", MAXTHREADS);
         return NULL;
     }
+    printf("\n------------------------\n%d threads.\n", threads);
+
+    /* Set function-pointers */
+    blendWorkerPtr = blendWorker;
+    znccWorkerPtr = znccWorker;
+    blend_2x2Ptr = blend_2x2;
+#ifdef __x86_64__
+    if (disableAsm) {
+        printf("Assembly disabled.\n");
+    }
+    else {
+        blendWorkerPtr = blendWorker_sse2;
+        if (supportSSE3()) {
+            printf("Processor supports SSE3.\n");
+            znccWorkerPtr = znccWorker_sse3;
+            blend_2x2Ptr = blend_2x2_sse3;
+        }
+    }
+#endif
+    printf("------------------------\n");
 
     total1 = doubleTime();
 
@@ -719,6 +777,7 @@ unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
     blend.width = width;
     blend.height = height;
     blend.image32Bit = img0;
+
     Data.greyImage0 = blend4x4_cnvrtToGreyscale(&blend);
     blend.image32Bit = img1;
     Data.greyImage1 = blend4x4_cnvrtToGreyscale(&blend);
@@ -741,8 +800,8 @@ unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
         DataHalf.width = Data.width/2;
         DataHalf.height = Data.height/2;
 
-        DataHalf.greyImage0 = blend_2x2(Data.greyImage0, width/4, height/4);
-        DataHalf.greyImage1 = blend_2x2(Data.greyImage1, width/4, height/4);
+        DataHalf.greyImage0 = blend_2x2Ptr(Data.greyImage0, width/4, height/4);
+        DataHalf.greyImage1 = blend_2x2Ptr(Data.greyImage1, width/4, height/4);
 
         if (DataHalf.greyImage0 == NULL || DataHalf.greyImage1 == NULL)
             return NULL;
@@ -755,7 +814,7 @@ unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
         time1 = doubleTime();
         zncc2way(&DataHalf);
         time2 = doubleTime();
-        printf("Half-sized zncc:           %6.1lf ms.\n", (time2-time1)*1000);
+        printf("zncc (half-resolution):    %6.1lf ms.\n", (time2-time1)*1000);
 
         free(DataHalf.displacements);
         free(DataHalf.greyImage0);
