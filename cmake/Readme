@@ -1,0 +1,11 @@
+Requirements:
+ Gcc/Clang
+ Yasm (x86_64 only. configure succeeds with nasm also, but fails in compiling.)
+
+Compiling: in cmake-folder, run
+ cmake -G "Unix Makefiles"
+ make
+
+Compiling debug-build:
+ cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
+ make
