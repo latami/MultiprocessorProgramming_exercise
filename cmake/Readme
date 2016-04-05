@@ -1,4 +1,5 @@
 Requirements:
+ cmake >=3.1
  Gcc/Clang
  Yasm (x86_64 only. configure succeeds with nasm also, but fails in compiling.)
 

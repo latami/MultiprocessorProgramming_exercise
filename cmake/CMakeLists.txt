@@ -1,9 +1,10 @@
 project(MultiProcessorProgramming_exercise)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1)
 aux_source_directory(. SRC_LIST)
 
 if(UNIX)
-    find_package (Threads)
+    find_package (Threads REQUIRED)
+    find_package (OpenCL REQUIRED)
 
     # Compare build type against empty string to enforce default behavior
     # to be release-build.
@@ -28,17 +29,24 @@ if(UNIX)
         ../main.c
         ../lodepng.c
         ../depthmap_c.c
-        ../depthmap64.asm)
+        ../depthmap64.asm
+        ../common_opencl.c
+        ../depthmap_opencl.c
+        ../depthmap_basic.cl)   # To get qt-creator to view it as one of the project files
     set(HDR_LIST
         ../lodepng.h
         ../depthmap_c.h
-        ../doubleTime.h)
+        ../doubleTime.h
+        ../common_opencl.h)
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
     add_executable(${PROJECT_NAME} ${SRC_LIST})
 
-    target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT} m)
+    target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT} ${OpenCL_LIBRARY} m)
+
+    # Copy .cl-file to the same directory as project executable
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/../depthmap_basic.cl $<TARGET_FILE_DIR:${PROJECT_NAME}>)
 
 else(UNIX)
     MESSAGE(FATAL_ERROR "Program requires UNIX-like operating system!")
