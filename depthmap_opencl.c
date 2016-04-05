@@ -356,7 +356,7 @@ int znccFunc(cl_context context, cl_program program, cl_command_queue queue,
     global[0] = width-bx+1;
     global[1] = height-by+1;
     local[0] = 1;
-    local[1] = 4;
+    local[1] = 1;
 
     clSetKernelArg(zncc, 0, sizeof(cl_mem), &cacheBlks_l);
     clSetKernelArg(zncc, 1, sizeof(cl_mem), &cacheBlks_r);
