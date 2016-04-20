@@ -105,7 +105,8 @@ cl_int buildOCLProgram(cl_device_id device, cl_context context,
 }
 
 int initOpenCL(cl_platform_id *platform, cl_device_id *device,
-               cl_context *context, cl_program *program, cl_device_type devType) {
+               cl_context *context, cl_program *program, cl_device_type devType,
+               const char *sourceFile) {
         int err;
 
         err = clGetPlatformIDs(1, platform, NULL);
@@ -136,7 +137,7 @@ int initOpenCL(cl_platform_id *platform, cl_device_id *device,
         }
 
         /* Build OpenCL source-file */
-        if (buildOCLProgram((*device), (*context), "depthmap_basic.cl", program) == EXIT_FAILURE) {
+        if (buildOCLProgram((*device), (*context), sourceFile, program) == EXIT_FAILURE) {
                 fprintf(stderr, "cl-file did not compile.\n");
                 return EXIT_FAILURE;
         }

@@ -32,12 +32,16 @@ if(UNIX)
         ../depthmap64.asm
         ../common_opencl.c
         ../depthmap_opencl.c
+        ../depthmap_opencl_amd.c
+        ../depthmap_amd.cl
         ../depthmap_basic.cl)   # To get qt-creator to view it as one of the project files
     set(HDR_LIST
         ../lodepng.h
         ../depthmap_c.h
         ../doubleTime.h
-        ../common_opencl.h)
+        ../common_opencl.h
+        ../depthmap_opencl.h
+        ../depthmap_opencl_amd.h)
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
@@ -47,6 +51,7 @@ if(UNIX)
 
     # Copy .cl-file to the same directory as project executable
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/../depthmap_basic.cl $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/../depthmap_amd.cl $<TARGET_FILE_DIR:${PROJECT_NAME}>)
 
 else(UNIX)
     MESSAGE(FATAL_ERROR "Program requires UNIX-like operating system!")

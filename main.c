@@ -7,6 +7,7 @@
 #include "lodepng.h"
 #include "depthmap_c.h"
 #include "depthmap_opencl.h"
+#include "depthmap_opencl_amd.h"
 #include "doubleTime.h"
 
 #define DEF_THREADS 0
@@ -107,7 +108,7 @@ int main(int argc, char *argv[])
             break;
         case 'a':
             setOpencl = parse_int(optarg, &error);
-            if (error == EXIT_FAILURE || setOpencl > 2) {
+            if (error == EXIT_FAILURE || setOpencl > 4) {
                 fprintf(stderr, "Error parsing OpenCL argument!\n");
                 return EXIT_FAILURE;
             }
@@ -122,7 +123,9 @@ int main(int argc, char *argv[])
                    "-s      toggle to disable assembly-code\n"
                    "-a <>   select opencl version\n"
                    "        1: basic cpu\n"
-                   "        2: basic gpu\n");
+                   "        2: basic gpu\n"
+                   "        3: Amd optimized (cpu as a device)\n"
+                   "        4: Amd optimized\n");
             return EXIT_FAILURE;
             break;
         }
@@ -161,10 +164,16 @@ int main(int argc, char *argv[])
 
     unsigned char *finalDepthmap;
     if (setOpencl != 0) {
-        finalDepthmap = generateDepthmap_opencl_basic(thread0.image, thread1.image,
+        if (setOpencl < 3)
+            finalDepthmap = generateDepthmap_opencl_basic(thread0.image, thread1.image,
                                                       thread0.w, thread0.h,
                                                       blockx, blocky,
                                                       disp_limit, select, setOpencl);
+        else
+            finalDepthmap = generateDepthmap_opencl_amd(thread0.image, thread1.image,
+                                                      thread0.w, thread0.h,
+                                                      blockx, blocky,
+                                                      disp_limit, select, setOpencl-2);
     }
     else
         finalDepthmap = generateDepthmap(thread0.image, thread1.image,
