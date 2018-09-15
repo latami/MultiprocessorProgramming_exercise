@@ -1,15 +1,3 @@
-SECTION .rodata		; Read-only
-align 16
-    ; value 0.25f 4 times
-    rcp_div4    ddq     0x3e8000003e8000003e8000003e800000
-    ; 0.0f 0.0722f 0.7152f 0.2126f
-    rgbConv     ddq     0x000000003d93dd983f3717593e59b3d0
-    mflt_max    ddq     0xff7fffffff7fffffff7fffffff7fffff
-    rcp_div     dd      0x3e800000
-    float_one   dd      0x3f800000
-
-SECTION .bss
-
 SECTION .text
 
 global supportSSE3
@@ -61,7 +49,7 @@ znccWorker_sse3
     push    r14
     push    r13
     push    r12
-    sub     rsp,    120
+    sub     rsp,    136
 
     mov     [rsp],  rdi
     mov     eax,    [rdi+48]
@@ -98,10 +86,17 @@ znccWorker_sse3
     mov     rax,    [rdi+80]
     mov     [rsp+32],   rax     ; *displacements
 
+    ; Save MAX_FLT vector to 16 byte aligned stack-address.
+    mov     eax,        0xff7fffff
+    mov     [rsp+112],  eax
+    mov     [rsp+116],  eax
+    mov     [rsp+120],  eax
+    mov     [rsp+124],  eax
+
 .whileTop
     mov     r11,    [rsp]
     mov     rdi,    [r11+8]     ; load ptr for mutex
-    call    pthread_mutex_lock
+    call    pthread_mutex_lock wrt ..plt
     mov     rdi,    [rsp]
     mov     r11,    [rdi+16]    ; load ptr for first_available
     mov     r15d,   [r11]       ; load value to callee-saved register
@@ -116,7 +111,7 @@ znccWorker_sse3
     mov     [r11],  r14d        ; update first_available
     mov     rdi,    [rdi+8]
     mov     [rsp+76],   r14d    ; save lasty to stack
-    call    pthread_mutex_unlock
+    call    pthread_mutex_unlock wrt ..plt
 
     mov     ecx,    [rsp+60]
     sub     ecx,    [rsp+68]
@@ -163,7 +158,7 @@ znccWorker_sse3
         call scanline_cacheBlkData_sse
 
         ; Init dmap2 cross-correlation compare-values
-        movaps  xmm0,   [mflt_max]
+        movaps  xmm0,   [rsp+112]   ; load FLT_MAX
         mov     rsi,    [rsp]
         mov     rsi,    [rsi+72]    ; start ptr and also iterator
         mov     [rsp+24],   rsi     ; save start pos to stack
@@ -201,7 +196,7 @@ znccWorker_sse3
             movzx   eax,    WORD [rcx+r14*4]    ; Zero-extended move, loads d.
             movzx   ebx,    WORD [rcx+r14*4+2]  ; dlim
 
-            movss   xmm15,  [mflt_max]
+            movss   xmm15,  [rsp+112]   ; load FLT_MAX
 
             mov     r12d,   [rsp+52]
             imul    r12d,   r14d        ; x*blkStride
@@ -329,7 +324,7 @@ znccWorker_sse3
     jmp .whileTop
 
 .End
-    add     rsp,    120
+    add     rsp,    136
     pop     r12
     pop     r13
     pop     r14
@@ -374,6 +369,10 @@ scanline_cacheBlkData_sse
     shl     eax,    2
     and     eax,    0xffffffe0
     mov     [rsp+12],   eax     ; blkStride (in bytes)
+
+    ; Save float number 1.0f to stack
+    mov     eax,        0x3f800000
+    mov     [rsp+16],   eax
 
     ; clear first width*4 bytes of cacheData
     xorps   xmm0,   xmm0
@@ -466,7 +465,7 @@ scanline_cacheBlkData_sse
     shl     r11d,   2
     add     r11,    rax         ; .nextBlkMean ending pointer
 
-    movss       xmm2,   [float_one]
+    movss       xmm2,   [rsp+16]; float_one
     cvtsi2ss    xmm3,   r8d
     cvtsi2ss    xmm4,   r9d
     mulss       xmm3,   xmm4
@@ -590,7 +589,7 @@ scanline_cacheBlkData_sse
 
         sqrtss  xmm0,   xmm0
         mov     ebx,    [rsp]
-        movss   xmm1,   [float_one]
+        movss   xmm1,   [rsp+16]    ; float_one
         divss   xmm1,   xmm0
         mov     eax,    [rsp+12]
         imul    eax,    ecx
@@ -626,7 +625,7 @@ blendWorker_sse2
     push    r15
     push    r14
 
-    sub     rsp,    16
+    sub     rsp,    32
 
     mov     [rsp],  rdi
     mov     ecx,    [rdi+32]    ; read width
@@ -634,11 +633,21 @@ blendWorker_sse2
     mov     edx,    [rdi+36]
     mov     [rsp+12],   edx     ; height
 
+    ;    rgbConv weights
+    mov     eax,        0x00000000
+    mov     [rsp+28],   eax
+    mov     eax,        0x3d93dd98
+    mov     [rsp+24],   eax
+    mov     eax,        0x3f371759
+    mov     [rsp+20],   eax
+    mov     eax,        0x3e59b3d0
+    mov     [rsp+16],   eax
+
     ; NOTE c-version divides heights by 4, asm does not, do not mix c- and asm-threads
     .whileTop
     mov     r11,    [rsp]
     mov     rdi,    [r11+8]     ; load ptr for mutex
-    call    pthread_mutex_lock
+    call    pthread_mutex_lock wrt ..plt
     mov     rdi,    [rsp]
     mov     r11,    [rdi+16]    ; load ptr for first_available
     mov     r15d,   [r11]       ; load value to callee-saved register
@@ -650,7 +659,7 @@ blendWorker_sse2
 .modifiedR15
     mov     [r11],  r15d        ; update first_available
     mov     rdi,    [rdi+8]
-    call    pthread_mutex_unlock
+    call    pthread_mutex_unlock wrt ..plt
 
     mov     ecx,    [rsp+12]
     sub     ecx,    5
@@ -735,7 +744,7 @@ blendWorker_sse2
 
             punpcklwd   xmm0,   xmm7
             cvtdq2ps    xmm0,   xmm0            ; Convert to floating point
-            mulps       xmm0,   [rgbConv]
+            mulps       xmm0,   [rsp+16]        ; rgbConv weights
             movaps      xmm1,   xmm0
             movaps      xmm2,   xmm0
             shufps      xmm1,   xmm1,   0x1
@@ -760,7 +769,7 @@ blendWorker_sse2
 
 
 .End
-    add     rsp,    16
+    add     rsp,    32
 
     pop     r14
     pop     r15
@@ -785,7 +794,7 @@ blend_2x2_sse3:
 
     push    rbx
     push    rbp
-    sub     rsp,    40
+    sub     rsp,    56
     mov     rax,    0
     ; Test image for dimensions and return NULL if either is zero or one.
     cmp    rsi,    2
@@ -797,12 +806,19 @@ blend_2x2_sse3:
     mov     [rsp+16],   rsi     ; width
     mov     [rsp+8],   rdx      ; height
 
+    ; Create 4 elem vector of value 1.0f/4.0f in divisible by 16 stack-address
+    mov     eax,        0x3e800000
+    mov     [rsp+32],   eax
+    mov     [rsp+36],   eax
+    mov     [rsp+40],   eax
+    mov     [rsp+44],   eax
+
     ; call posix_memalign
     imul    rdx,        rsi
     shl     rdx,        2
     mov     rsi,        16
     mov     rdi,        rsp     ; posix_memalign saves pointer to [rsp]
-    call    posix_memalign
+    call    posix_memalign wrt ..plt
 
     ; entry for y-loop
     mov     rdi,    [rsp+24]
@@ -842,7 +858,7 @@ blend_2x2_sse3:
             addps   xmm0,   xmm2
             addps   xmm1,   xmm3
             haddps  xmm0,   xmm1
-            mulps   xmm0,   [rcp_div4]
+            mulps   xmm0,   [rsp+32]  ; Load reciprocal (1.0f/4.0f)
 
             movups  [rax],  xmm0
 
@@ -873,7 +889,7 @@ blend_2x2_sse3:
             addss   xmm0,   xmm1
             addss   xmm2,   xmm3
             addss   xmm0,   xmm2
-            mulss   xmm0,   [rcp_div]
+            mulss   xmm0,   [rsp+32]    ; Load reciprocal (1.0f/4.0f)
 
             movss  [rax],  xmm0
 
@@ -890,7 +906,7 @@ blend_2x2_sse3:
 
     mov     rax,    [rsp]
 .End
-    add     rsp,    40
+    add     rsp,    56
     pop     rbp
     pop     rbx
     ret
