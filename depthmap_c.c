@@ -9,7 +9,7 @@
 #include "doubleTime.h"
 #include "depthmap_c.h"
 
-#define MAXTHREADS 8
+#define MAXTHREADS 32
 
 struct blend4x4Data {
     int threadsN;
@@ -731,8 +731,8 @@ unsigned char *generateDepthmap(unsigned char *img0, unsigned char *img1,
     if (threads == 0)
         threads = sysconf(_SC_NPROCESSORS_ONLN);
     if (threads > MAXTHREADS) {
-        fprintf(stderr, "Maximum threads allowed is %d.\n", MAXTHREADS);
-        return NULL;
+        fprintf(stderr, "Maximum threads allowed is %d. Adjusting number of threads.\n", MAXTHREADS);
+        threads = MAXTHREADS;
     }
     printf("\n------------------------\n%d threads.\n", threads);
 
