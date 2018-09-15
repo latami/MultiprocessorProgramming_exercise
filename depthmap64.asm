@@ -22,7 +22,7 @@ extern pthread_mutex_unlock
 ; Check processor support for SSE3
 ; Returns 1 if supported
 
-supportSSE3
+supportSSE3:
 
     push    rbx         ; cpuid modifies ebx
 
@@ -41,7 +41,7 @@ supportSSE3
 ; params (rdi)
 ; Callee saved: rbx, rbp, r12-r15
 
-znccWorker_sse3
+znccWorker_sse3:
 
     push    rbx
     push    rbp
@@ -93,7 +93,7 @@ znccWorker_sse3
     mov     [rsp+120],  eax
     mov     [rsp+124],  eax
 
-.whileTop
+.whileTop:
     mov     r11,    [rsp]
     mov     rdi,    [r11+8]     ; load ptr for mutex
     call    pthread_mutex_lock wrt ..plt
@@ -107,7 +107,7 @@ znccWorker_sse3
     jg .moreThreads
     mov     r14d,   [rsp+60]    ; move height to r14 if 1 thread
     sub     r14d,   [rsp+68]    ; lasty = height-blkSidey
-.moreThreads
+.moreThreads:
     mov     [r11],  r14d        ; update first_available
     mov     rdi,    [rdi+8]
     mov     [rsp+76],   r14d    ; save lasty to stack
@@ -123,7 +123,7 @@ znccWorker_sse3
     cmp     ecx,    [rsp+76]
     jg .lastDidNotGoOver
     mov     [rsp+76],   ecx
-.lastDidNotGoOver
+.lastDidNotGoOver:
 
         mov     r11,    [rsp]
         mov     r12,    [r11+56]
@@ -138,7 +138,7 @@ znccWorker_sse3
         mov     [rsp+96],   r12     ; *left rcp_devs
         mov     [rsp+104],  r13     ; right rcp_devs
 
-    .SCANLINE
+    .SCANLINE:
         ; Cache data
         mov     r9,     [rsp]
         mov     rdi,    [r9+32]     ; *greyImage0
@@ -165,7 +165,7 @@ znccWorker_sse3
         mov     ecx,    [rsp+56]
         lea     rcx,    [rsi+rcx*4] ; end ptr
         sub     rcx,    12          ; Adjust end for a 4-wide loop
-        .INITIALIZE_CCORR_dmap2x4
+        .INITIALIZE_CCORR_dmap2x4:
             movaps  [rsi],  xmm0
             add     rsi,    16
             cmp     rsi,    rcx
@@ -173,12 +173,12 @@ znccWorker_sse3
         add     rcx,    12
         cmp     rsi,    rcx
         jge .SKIP_INITx1
-        .INITIALIZE_CCORR_dmap2x1
+        .INITIALIZE_CCORR_dmap2x1:
             movss   [rsi],  xmm0
             add     rsi,    4
             cmp     rsi,    rcx
             jl .INITIALIZE_CCORR_dmap2x1
-        .SKIP_INITx1
+        .SKIP_INITx1:
 
         ; Iterate through pixels in a scanline
         ;--------------------------------------
@@ -191,7 +191,7 @@ znccWorker_sse3
         shl     ecx,    2               ; sizeof(short)*scanLine*width*2
         add     rcx,    rbx             ; &displacements[scanline][0]
         mov     r14d,   [rsp+64]
-        .xITER
+        .xITER:
             ; rcx + sizeof(short)*x*2
             movzx   eax,    WORD [rcx+r14*4]    ; Zero-extended move, loads d.
             movzx   ebx,    WORD [rcx+r14*4+2]  ; dlim
@@ -209,7 +209,7 @@ znccWorker_sse3
             movss   xmm13,  [r8]        ; left rcp_deviation
 
             ; Iteration count >=1
-            .dITER
+            .dITER:
                 mov     rdi,    r12
                 mov     rdx,    r12
                 mov     ebp,    [rsp+48]
@@ -234,7 +234,7 @@ znccWorker_sse3
                 sub     rdx,    60
                 cmp     rdi,    rdx
                 jge .SKIP_4x4
-                .ELEMENTSx4x4
+                .ELEMENTSx4x4:
                     movaps  xmm4,   [rdi]
                     mulps   xmm4,   [rsi]
                     addps   xmm0,   xmm4
@@ -251,11 +251,11 @@ znccWorker_sse3
                     add     rsi,    64
                     cmp     rdi,    rdx
                     jl .ELEMENTSx4x4
-                .SKIP_4x4
+                .SKIP_4x4:
                 add     rdx,    48
                 cmp     rdi,    rdx
                 jge .SKIP_4
-                .ELEMENTSx4
+                .ELEMENTSx4:
                     movaps  xmm4,   [rdi]
                     mulps   xmm4,   [rsi]
                     addps   xmm0,   xmm4
@@ -263,9 +263,9 @@ znccWorker_sse3
                     add     rsi,    16
                     cmp     rdi,    rdx
                     jl .ELEMENTSx4
-                .SKIP_4
+                .SKIP_4:
                 add     rdx,    12
-                .ELEMENTSx1                 ; Number of elements is odd,
+                .ELEMENTSx1:                ; Number of elements is odd,
                     movss   xmm4,   [rdi]   ; so always runs atleast once
                     mulss   xmm4,   [rsi]
                     addss   xmm0,   xmm4
@@ -287,7 +287,7 @@ znccWorker_sse3
                 jb .SKIP_SAVE_CURRENT_d_left
                 mov     r10d,   eax
                 movaps  xmm15,  xmm0
-                .SKIP_SAVE_CURRENT_d_left
+                .SKIP_SAVE_CURRENT_d_left:
                 mov     r8,     [rsp+24]
                 shl     eax,    2
                 sub     r8,     rax
@@ -302,7 +302,7 @@ znccWorker_sse3
                 add     r8,     r14
                 sub     r8,     rax
                 mov     BYTE [r8],  al
-                .SKIP_SAVE_CURRENT_d_right
+                .SKIP_SAVE_CURRENT_d_right:
 
                 add     eax,    1
                 cmp     eax,    ebx
@@ -323,7 +323,7 @@ znccWorker_sse3
 
     jmp .whileTop
 
-.End
+.End:
     add     rsp,    136
     pop     r12
     pop     r13
@@ -339,7 +339,7 @@ znccWorker_sse3
 ;--------------------------------------------------------------------------------
 ; params (rdi, rsi, rdx, rcx, r8, r9)
 ; Callee saved: rbx, rbp, r12-r15
-scanline_cacheBlkData_sse
+scanline_cacheBlkData_sse:
 
     push    rbx
     push    rbp
@@ -384,27 +384,27 @@ scanline_cacheBlkData_sse
 
     cmp     rax,    r10
     jge .SKIPCLEAR16
-    .CLEAR16BYTES
+    .CLEAR16BYTES:
         movaps  [rax],  xmm0    ; zero 16 bytes, *cacheData must be aligned
         add     rax,    16
         cmp     rax,    r10
         jl .CLEAR16BYTES
-.SKIPCLEAR16
+.SKIPCLEAR16:
 
     add     r10,    12
     cmp     rax,    r10
     jge .SKIPCLEAR4
-    .CLEAR4BYTES
+    .CLEAR4BYTES:
         movss   [rax],  xmm0    ; zero 4 bytes
         add     rax,    4
         cmp     rax,    r10
         jl .CLEAR4BYTES
-.SKIPCLEAR4
+.SKIPCLEAR4:
 
 ; Add columns together
 ; Assume variable by is non-zero
     xor     ebp,    ebp     ; y-loop counter
-    .yTOP
+    .yTOP:
 
         mov     r10d,   ecx
         shl     r10d,   2
@@ -418,7 +418,7 @@ scanline_cacheBlkData_sse
 
         cmp     rax,    r10
         jge .SKIP_ADD4f
-        .ADD4f
+        .ADD4f:
             movups  xmm0,   [rbx]
             addps   xmm0,   [rax]
             movaps  [rax],  xmm0
@@ -426,12 +426,12 @@ scanline_cacheBlkData_sse
             add     rbx,    16
             cmp     rax,    r10
             jl .ADD4f
-        .SKIP_ADD4f
+        .SKIP_ADD4f:
 
         add     r10,    12
         cmp     rax,    r10
         jge .SKIP_ADD1f
-        .ADD1f
+        .ADD1f:
             movss   xmm0,   [rbx]
             addss   xmm0,   [rax]
             movss   [rax],  xmm0
@@ -439,7 +439,7 @@ scanline_cacheBlkData_sse
             add     rbx,    4
             cmp     rax,    r10
             jl .ADD1f
-        .SKIP_ADD1f
+        .SKIP_ADD1f:
 
         add     ebp,    1
         cmp     ebp,    r9d
@@ -476,7 +476,7 @@ scanline_cacheBlkData_sse
     lea     r10,    [rbx+r8*4]
     xorps   xmm0,   xmm0    ; accumulator
 
-    .ADDBX_ROW
+    .ADDBX_ROW:
         addss   xmm0,   [rbx]
         add     rbx,    4
         cmp     rbx,    r10
@@ -488,7 +488,7 @@ scanline_cacheBlkData_sse
     movss   [rax],  xmm0
 
     add     rax,    4       ; assume there is block to calculate
-    .SUB1ADD1               ; in other words width >= bx+1
+    .SUB1ADD1:              ; in other words width >= bx+1
         subss   xmm1,   [rbx-4]
         addss   xmm1,   [rbx+rbp]
         movaps  xmm0,   xmm1
@@ -517,7 +517,7 @@ scanline_cacheBlkData_sse
     sub     r12d,   r8d     ; width-bx
 
     ; Starting from i=bxSide
-    .iTOP
+    .iTOP:
         mov     r11d,   ecx
         imul    r11d,   [rsp+12]
         mov     ebx,    [rsp]
@@ -540,11 +540,11 @@ scanline_cacheBlkData_sse
 
         xor     r11d,   r11d        ; y counter
         ; 1-block wide
-        .y_0_BY
+        .y_0_BY:
             sub     r15,    12
             cmp     r10,    r15
             jge .SKIP4              ; Skips, if bx=3
-            .subMeanAndAddDevs4
+            .subMeanAndAddDevs4:
                 movups  xmm0,   [r10]
                 subps   xmm0,   xmm7
                 movups  [rsi],  xmm0
@@ -555,11 +555,11 @@ scanline_cacheBlkData_sse
                 cmp     r10,    r15
                 jl .subMeanAndAddDevs4
 
-            .SKIP4
+            .SKIP4:
 
             add     r15,    12          ; Adjust loop control for 1-wide
 
-            .subMeanAndAddDevs1         ; always executes atleast once
+            .subMeanAndAddDevs1:        ; always executes atleast once
                 movss   xmm0,   [r10]
                 subss   xmm0,   xmm7
                 movss   [rsi],  xmm0
@@ -604,7 +604,7 @@ scanline_cacheBlkData_sse
         cmp     ebx,    [rsp+4]
         jl .iTOP
 
-.End
+.End:
     add     rsp,    120
     pop     r12
     pop     r13
@@ -619,7 +619,7 @@ scanline_cacheBlkData_sse
 ;-----------------------------------
 ; params (rdi)
 ; Callee saved: rbx, rbp, r12-r15
-blendWorker_sse2
+blendWorker_sse2:
 
     push    rbx
     push    r15
@@ -644,7 +644,7 @@ blendWorker_sse2
     mov     [rsp+16],   eax
 
     ; NOTE c-version divides heights by 4, asm does not, do not mix c- and asm-threads
-    .whileTop
+    .whileTop:
     mov     r11,    [rsp]
     mov     rdi,    [r11+8]     ; load ptr for mutex
     call    pthread_mutex_lock wrt ..plt
@@ -656,7 +656,7 @@ blendWorker_sse2
     mov     r9d,    [rdi]       ; threadsN
     cmp     r9d,    1
     je .lasty_equalto_height
-.modifiedR15
+.modifiedR15:
     mov     [r11],  r15d        ; update first_available
     mov     rdi,    [rdi+8]
     call    pthread_mutex_unlock wrt ..plt
@@ -669,7 +669,7 @@ blendWorker_sse2
     add     ecx,    2           ; height-3
     cmp     r15d,   ecx
     jg .EqualHeightminus3
-.modifiedR15again
+.modifiedR15again:
 
     cmp     r14d,   r15d        ; FIXME: Almost identical check as few lines above.
     jg .End                     ; No work on entry, something gone wrong?
@@ -682,7 +682,7 @@ blendWorker_sse2
     mov     edx,    ecx
     imul    edx,    3           ; line-stride*3
 
-    .yTop
+    .yTop:
         mov     ebx,    [rsp+8] ; width
 
         mov     r11d,   r14d
@@ -707,7 +707,7 @@ blendWorker_sse2
 
         ALIGN 16
         ; Reads 4x4 32bit pixels wide part of the image
-        .x4Top
+        .x4Top:
             movups  xmm0,   [rbx]
             movups  xmm1,   [rbx+rcx]       ; +stride
             movups  xmm2,   [rbx+rcx*2]     ; +stride*2
@@ -759,7 +759,7 @@ blendWorker_sse2
 
             cmp     rbx,    r10
             jl .x4Top
-        .skip_x4
+        .skip_x4:
 
         add     r14d,   4
         cmp     r14d,   r15d
@@ -768,7 +768,7 @@ blendWorker_sse2
         jmp .whileTop
 
 
-.End
+.End:
     add     rsp,    32
 
     pop     r14
@@ -776,11 +776,11 @@ blendWorker_sse2
     pop     rbx
     ret
 
-.lasty_equalto_height
+.lasty_equalto_height:
     mov     r15d,   [rdi+36]    ; move height to r15
     jmp .modifiedR15
 
-.EqualHeightminus3
+.EqualHeightminus3:
     mov     r15d,   ecx
     jmp .modifiedR15again
 
@@ -823,7 +823,7 @@ blend_2x2_sse3:
     ; entry for y-loop
     mov     rdi,    [rsp+24]
     xor     r9d,    r9d
-    .y_top
+    .y_top:
 
         mov     rcx,    [rsp+16]
         mov     rdx,    [rsp+16]
@@ -849,7 +849,7 @@ blend_2x2_sse3:
         jl .skip_x8
 
         ALIGN 16
-        .x8_top
+        .x8_top:
             movups  xmm0,   [rcx]
             movups  xmm1,   [rcx+16]
             movups  xmm2,   [rdx]
@@ -875,12 +875,12 @@ blend_2x2_sse3:
             cmp     rcx,    rbx
             jge .skip_x2
 
-        .skip_x8
+        .skip_x8:
             add     rbx,    24      ; re-adjust loop-ending
         ALIGN 16
         ; in case of skipping x8_loop it was earlier guaranteed that atleast
         ; 2 pixels remain to be processed
-        .x2_top
+        .x2_top:
             movss   xmm0,   [rcx]
             movss   xmm1,   [rcx+4]
             movss   xmm2,   [rdx]
@@ -899,13 +899,13 @@ blend_2x2_sse3:
             cmp     rcx,    rbx
             jl .x2_top
 
-    .skip_x2
+    .skip_x2:
         add     r9d,    2
         cmp     r9d,    [rsp+8]
         jl .y_top
 
     mov     rax,    [rsp]
-.End
+.End:
     add     rsp,    56
     pop     rbp
     pop     rbx
