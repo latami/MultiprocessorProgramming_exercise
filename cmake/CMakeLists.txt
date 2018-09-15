@@ -18,9 +18,6 @@ if(UNIX)
     if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
         MESSAGE(STATUS "Enabling x86_64 assembly.")
         enable_language(ASM_NASM)
-        # This forces yasm as a compiler. Configure will end successfully
-        # even with just nasm, but fails compiling because it requires yasm.
-        set(CMAKE_ASM_NASM_COMPILER "yasm")
     else(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
         MESSAGE(STATUS "Not a X86_64-machine. Assembly-code will not be compiled!")
     endif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
