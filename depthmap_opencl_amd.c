@@ -158,18 +158,18 @@ int znccFunc_amd(cl_context context, cl_program program, cl_command_queue queue,
     cl_mem cacheBlks_l, cacheBlks_r, ccor;
     size_t cacheSize, size, ccSize, global[2], local[2], globalOffset[2];
     cl_int err, errs[5], i;
-    cl_kernel cacheBlkData, initCcors, zncc, constructDmaps;
+    cl_kernel cacheBlkData, zncc, constructDmaps;
     cl_uint blkStride, lineStride;
     float time1=0.0f, time2=0.0f, time3=0.0f;
 
     cacheBlkData =   clCreateKernel(program, "cacheBlkData", &errs[0]);
-    zncc =	         clCreateKernel(program, "zncc_vector", &errs[2]);
-    constructDmaps = clCreateKernel(program, "constructDmaps", &errs[3]);
+    zncc =	         clCreateKernel(program, "zncc_vector", &errs[1]);
+    constructDmaps = clCreateKernel(program, "constructDmaps", &errs[2]);
 
     for(i=0; i < 3; i++) {
         if (errs[i] != CL_SUCCESS) {
             fprintf(stderr, "Couldn't create a kernel number %d! Code: %d"
-                            " %s line %d\n", i, errs[0], __FILE__, __LINE__);
+                            " %s line %d\n", i, errs[i], __FILE__, __LINE__);
             return EXIT_FAILURE;
         }
     }
