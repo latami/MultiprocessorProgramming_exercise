@@ -1,5 +1,5 @@
 project(MultiProcessorProgramming_exercise)
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.12)
 aux_source_directory(. SRC_LIST)
 
 if(UNIX)
@@ -42,6 +42,7 @@ if(UNIX)
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
+    add_compile_definitions(CL_TARGET_OPENCL_VERSION=100)
     add_executable(${PROJECT_NAME} ${SRC_LIST})
 
     target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT} ${OpenCL_LIBRARY} m)
