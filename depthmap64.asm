@@ -1,3 +1,4 @@
+SECTION .note.GNU-stack	; Mark stack as non-executable
 SECTION .text
 
 global supportSSE3
