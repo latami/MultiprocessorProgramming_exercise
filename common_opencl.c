@@ -81,7 +81,11 @@ cl_int buildOCLProgram(cl_device_id device, cl_context context,
         rewind(handle);
         buffer = malloc(program_size+1);
         buffer[program_size] = '\0';
-        fread(buffer, sizeof(char), program_size, handle);
+        if (fread(buffer, sizeof(char), program_size, handle) != program_size) {
+            fprintf(stderr, "Reading program file failed!\n");
+            fclose(handle);
+            return EXIT_FAILURE;
+        }
         fclose(handle);
 
         (*program) = clCreateProgramWithSource(context, 1, (const char **)&buffer, &program_size, &err);
